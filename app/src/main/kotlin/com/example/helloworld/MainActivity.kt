@@ -8,17 +8,20 @@ import android.content.SharedPreferences
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.text.*
 import android.text.style.BackgroundColorSpan
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -30,20 +33,24 @@ import com.google.android.material.tabs.TabLayout
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
     private var isPlaying = false
+    private var isExporting = false
     private var startTime: Long = 0
 
     private lateinit var etInput: EditText
@@ -55,6 +62,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var btnHistory: ImageButton
     private lateinit var btnFavorite: ImageButton
     private lateinit var fabPlay: FloatingActionButton
+    private lateinit var fabExport: FloatingActionButton
     private lateinit var fabStop: FloatingActionButton
     private lateinit var seekBar: SeekBar
     private lateinit var autoCompleteTxt: AutoCompleteTextView
@@ -64,6 +72,19 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var database: AppDatabase
     private var speechRate = 1.0f
     private var speechPitch = 1.0f
+    private var lastExportUri: Uri? = null
+    private var lastExportMimeType: String? = null
+
+    private val pendingFileSyntheses = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
+    private val exportProgressHandler = Handler(Looper.getMainLooper())
+    private var exportProgressRunnable: Runnable? = null
+    private var exportDialog: AlertDialog? = null
+    private var exportProgressBar: ProgressBar? = null
+    private var exportStatusText: TextView? = null
+    private var exportPercentText: TextView? = null
+    private var exportSuccessIcon: ImageView? = null
+    private var exportShareButton: Button? = null
+    private var exportCloseButton: Button? = null
 
     private val languages = arrayOf("English - US", "Swahili - TZ", "Kirundi - BI")
     private val locales = arrayOf(Locale.US, Locale("sw", "TZ"), Locale("rn", "BI"))
@@ -104,6 +125,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         btnHistory = findViewById(R.id.btn_history)
         btnFavorite = findViewById(R.id.btn_favorite)
         fabPlay = findViewById(R.id.fab_play)
+        fabExport = findViewById(R.id.fab_export)
         fabStop = findViewById(R.id.fab_stop)
         seekBar = findViewById(R.id.seek_bar)
         autoCompleteTxt = findViewById(R.id.auto_complete_txt)
@@ -139,6 +161,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         btnFavorite.setOnClickListener { saveToFavorites() }
 
         fabPlay.setOnClickListener { if (isPlaying) stopPlayback() else startPlayback() }
+        fabExport.setOnClickListener { showExportMenu(it) }
         fabStop.setOnClickListener { stopPlayback() }
 
         // Initialize TTS
@@ -147,20 +170,21 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun updateButtonsState(hasText: Boolean) {
+        val canAct = hasText && !isExporting
         if (hasText) {
             btnClear.visibility = View.VISIBLE
             btnFavorite.alpha = 1.0f
-            if (!isPlaying) {
-                fabPlay.isEnabled = true
-                fabPlay.alpha = 1.0f
-            }
         } else {
             btnClear.visibility = View.GONE
             btnFavorite.alpha = 0.5f
-            if (!isPlaying) {
-                fabPlay.isEnabled = false
-                fabPlay.alpha = 0.5f
-            }
+        }
+
+        fabExport.isEnabled = canAct
+        fabExport.alpha = if (canAct) 1.0f else 0.5f
+
+        if (!isPlaying) {
+            fabPlay.isEnabled = canAct
+            fabPlay.alpha = if (canAct) 1.0f else 0.5f
         }
     }
 
@@ -203,6 +227,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun startPlayback() {
         val text = etInput.text.toString()
         if (text.isEmpty()) return
+        if (isExporting) return
+        if (!isTtsReady) {
+            Toast.makeText(this, R.string.tts_not_ready, Toast.LENGTH_SHORT).show()
+            return
+        }
 
         isPlaying = true
         fabPlay.setImageResource(R.drawable.ic_pause)
@@ -236,6 +265,189 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         seekBar.visibility = View.INVISIBLE
         btnFavorite.setColorFilter(Color.WHITE)
         etInput.setText(SpannableString(etInput.text.toString()))
+        updateButtonsState(etInput.text?.isNotEmpty() == true)
+    }
+
+    private fun showExportMenu(anchor: View) {
+        val text = etInput.text.toString().trim()
+        if (text.isEmpty()) {
+            Toast.makeText(this, R.string.export_requires_text, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!isTtsReady) {
+            Toast.makeText(this, R.string.tts_not_ready, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        PopupMenu(this, anchor).apply {
+            menu.add(0, AudioExportFormat.MP3.ordinal, 0, getString(R.string.export_mp3))
+            menu.add(0, AudioExportFormat.WAV.ordinal, 1, getString(R.string.export_wav))
+            setOnMenuItemClickListener { item ->
+                beginExport(AudioExportFormat.entries[item.itemId])
+                true
+            }
+            show()
+        }
+    }
+
+    private fun beginExport(format: AudioExportFormat) {
+        if (isExporting) return
+
+        val text = etInput.text.toString().trim()
+        if (text.isEmpty()) {
+            Toast.makeText(this, R.string.export_requires_text, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        stopPlayback()
+        isExporting = true
+        lastExportUri = null
+        lastExportMimeType = null
+        updateButtonsState(text.isNotEmpty())
+        showExportDialog()
+        updateExportProgress(0, getString(R.string.export_progress_initial))
+        animateExportProgress(18)
+
+        lifecycleScope.launch {
+            val tempWav = File(cacheDir, "tts_export_${System.currentTimeMillis()}.wav")
+            val tempMp3 = File(cacheDir, "tts_export_${System.currentTimeMillis()}.mp3")
+
+            try {
+                updateExportProgress(12, getString(R.string.export_progress_synthesizing))
+                awaitSynthesisToFile(text, tempWav, "EXPORT_${System.currentTimeMillis()}")
+                updateExportProgress(70, getString(R.string.export_progress_encoding))
+
+                val finalSource = if (format == AudioExportFormat.MP3) {
+                    animateExportProgress(88)
+                    AudioExportManager.convertWavToMp3(tempWav, tempMp3)
+                    tempMp3
+                } else {
+                    tempWav
+                }
+
+                updateExportProgress(92, getString(R.string.export_progress_saving))
+                val exportResult = AudioExportManager.saveToPublicStorage(this@MainActivity, finalSource, format)
+                lastExportUri = exportResult.uri
+                lastExportMimeType = format.mimeType
+                showExportSuccess(exportResult.displayName)
+            } catch (error: Exception) {
+                dismissExportDialog()
+                Toast.makeText(
+                    this@MainActivity,
+                    error.message ?: getString(R.string.export_failed),
+                    Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                stopExportProgressAnimation()
+                tempWav.delete()
+                tempMp3.delete()
+                isExporting = false
+                updateButtonsState(etInput.text?.isNotEmpty() == true)
+            }
+        }
+    }
+
+    private suspend fun awaitSynthesisToFile(text: String, outputFile: File, utteranceId: String) {
+        val deferred = CompletableDeferred<Unit>()
+        pendingFileSyntheses[utteranceId] = deferred
+        val result = withContext(Dispatchers.Main) {
+            tts?.synthesizeToFile(text, Bundle(), outputFile, utteranceId) ?: TextToSpeech.ERROR
+        }
+
+        if (result == TextToSpeech.ERROR) {
+            pendingFileSyntheses.remove(utteranceId)
+            throw IllegalStateException(getString(R.string.export_failed))
+        }
+
+        deferred.await()
+    }
+
+    private fun showExportDialog() {
+        dismissExportDialog()
+        val view = layoutInflater.inflate(R.layout.dialog_export_progress, null)
+        exportProgressBar = view.findViewById(R.id.progress_export)
+        exportStatusText = view.findViewById(R.id.tv_export_status)
+        exportPercentText = view.findViewById(R.id.tv_export_percent)
+        exportSuccessIcon = view.findViewById(R.id.iv_export_success)
+        exportShareButton = view.findViewById(R.id.btn_export_share)
+        exportCloseButton = view.findViewById(R.id.btn_export_close)
+
+        exportShareButton?.setOnClickListener { shareLastExport() }
+        exportCloseButton?.setOnClickListener { dismissExportDialog() }
+
+        exportDialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+        exportDialog?.show()
+    }
+
+    private fun updateExportProgress(progress: Int, status: String) {
+        runOnUiThread {
+            val value = progress.coerceIn(0, 100)
+            exportProgressBar?.progress = value
+            exportStatusText?.text = status
+            exportPercentText?.text = "$value%"
+        }
+    }
+
+    private fun animateExportProgress(target: Int) {
+        stopExportProgressAnimation()
+        val safeTarget = target.coerceIn(0, 95)
+        exportProgressRunnable = object : Runnable {
+            override fun run() {
+                val current = exportProgressBar?.progress ?: 0
+                if (current < safeTarget) {
+                    updateExportProgress(current + 1, exportStatusText?.text?.toString() ?: "")
+                    exportProgressHandler.postDelayed(this, 90)
+                }
+            }
+        }
+        exportProgressRunnable?.let(exportProgressHandler::post)
+    }
+
+    private fun stopExportProgressAnimation() {
+        exportProgressRunnable?.let(exportProgressHandler::removeCallbacks)
+        exportProgressRunnable = null
+    }
+
+    private fun showExportSuccess(fileName: String) {
+        stopExportProgressAnimation()
+        updateExportProgress(100, getString(R.string.export_complete))
+        runOnUiThread {
+            exportSuccessIcon?.visibility = View.VISIBLE
+            exportShareButton?.visibility = View.VISIBLE
+            exportCloseButton?.visibility = View.VISIBLE
+            Toast.makeText(this, getString(R.string.export_saved_to, fileName), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun dismissExportDialog() {
+        stopExportProgressAnimation()
+        exportDialog?.dismiss()
+        exportDialog = null
+        exportProgressBar = null
+        exportStatusText = null
+        exportPercentText = null
+        exportSuccessIcon = null
+        exportShareButton = null
+        exportCloseButton = null
+    }
+
+    private fun shareLastExport() {
+        val exportUri = lastExportUri ?: return
+        val mimeType = lastExportMimeType ?: "audio/*"
+        val shareUri = if (exportUri.scheme == "file") {
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", File(exportUri.path.orEmpty()))
+        } else {
+            exportUri
+        }
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, shareUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, getString(R.string.share_audio_sheet_title)))
     }
 
     private fun importFile(uri: Uri) {
@@ -390,7 +602,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun applySettings() {
         tts?.setSpeechRate(speechRate)
         tts?.setPitch(speechPitch)
-        if (isPlaying && etInput.text.isNotEmpty()) {
+        if (isPlaying && !isExporting && etInput.text.isNotEmpty()) {
             val params = Bundle()
             params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "TTS_READER")
             tts?.speak(etInput.text.toString().substring(seekBar.progress), TextToSpeech.QUEUE_FLUSH, params, "TTS_READER")
@@ -408,8 +620,24 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             tts?.setPitch(speechPitch)
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(id: String?) {}
-                override fun onDone(id: String?) { if (id == "TTS_READER") runOnUiThread { stopPlayback() } }
-                override fun onError(id: String?) { runOnUiThread { stopPlayback() } }
+                override fun onDone(id: String?) {
+                    val deferred = id?.let { pendingFileSyntheses.remove(it) }
+                    if (deferred != null) {
+                        deferred.complete(Unit)
+                    } else if (id == "TTS_READER") {
+                        runOnUiThread { stopPlayback() }
+                    }
+                }
+
+                override fun onError(id: String?) {
+                    val deferred = id?.let { pendingFileSyntheses.remove(it) }
+                    if (deferred != null) {
+                        deferred.completeExceptionally(IllegalStateException(getString(R.string.export_failed)))
+                    } else {
+                        runOnUiThread { stopPlayback() }
+                    }
+                }
+
                 override fun onRangeStart(id: String?, start: Int, end: Int, frame: Int) {
                     if (id == "TTS_READER") runOnUiThread { highlightText(start, end); seekBar.progress = start }
                 }
@@ -426,7 +654,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         etInput.setText(spannable)
     }
 
-    override fun onDestroy() { tts?.stop(); tts?.shutdown(); super.onDestroy() }
+    override fun onDestroy() {
+        dismissExportDialog()
+        tts?.stop()
+        tts?.shutdown()
+        super.onDestroy()
+    }
 
     inner class HistoryAdapter(private val onClick: (HistoryItem) -> Unit) : RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
         var currentList = emptyList<HistoryItem>()
