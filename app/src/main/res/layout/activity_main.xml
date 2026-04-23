@@ -18,6 +18,26 @@
             app:titleTextColor="@color/white">
 
             <ImageButton
+                android:id="@+id/btn_history"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="History"
+                android:src="@drawable/ic_history"
+                app:tint="@color/white" />
+
+            <ImageButton
+                android:id="@+id/btn_favorite"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Favorite"
+                android:src="@drawable/ic_favorite"
+                app:tint="@color/white" />
+
+            <ImageButton
                 android:id="@+id/btn_import"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
