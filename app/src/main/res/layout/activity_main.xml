@@ -24,7 +24,7 @@
                 android:layout_gravity="end"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Paste"
-                android:src="@android:drawable/ic_menu_paste_holo_dark"
+                android:src="@drawable/ic_paste"
                 app:tint="@color/white" />
 
         </com.google.android.material.appbar.MaterialToolbar>
@@ -64,7 +64,7 @@
                 android:layout_marginTop="8dp"
                 android:layout_marginEnd="8dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:src="@drawable/ic_clear"
                 android:visibility="gone"
                 app:tint="#88FFFFFF" />
 
@@ -88,7 +88,7 @@
             android:hint="Select Voice"
             app:hintTextColor="@color/primary"
             app:layout_constraintTop_toBottomOf="@id/input_container"
-            app:startIconDrawable="@android:drawable/ic_btn_speak_now"
+            app:startIconDrawable="@drawable/ic_voice"
             app:startIconTint="@color/primary">
 
             <AutoCompleteTextView
@@ -123,7 +123,7 @@
         android:enabled="false"
         android:alpha="0.5"
         app:backgroundTint="@color/primary"
-        app:srcCompat="@android:drawable/ic_media_play"
+        app:srcCompat="@drawable/ic_play"
         app:tint="@color/background_dark" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
