@@ -63,6 +63,7 @@ dependencies {
     kapt("androidx.room:room-compiler:$room_version")
     
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("de.sciss:jump3r:1.0.5")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1")
     implementation("androidx.core:core-splashscreen:1.0.1")
