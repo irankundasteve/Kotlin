@@ -18,6 +18,17 @@
             app:titleTextColor="@color/white">
 
             <ImageButton
+                android:id="@+id/btn_settings"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:layout_marginEnd="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Settings"
+                android:src="@drawable/ic_settings"
+                app:tint="@color/white" />
+
+            <ImageButton
                 android:id="@+id/btn_paste"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
