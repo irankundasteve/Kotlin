@@ -1,24 +1,34 @@
 package com.example.helloworld
 
+import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.text.Editable
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.TextWatcher
+import android.text.*
 import android.text.style.BackgroundColorSpan
 import android.util.Log
 import android.view.View
 import android.widget.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.floatingactionbutton.FloatingActionButton
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.util.*
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
@@ -33,10 +43,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var btnClear: ImageButton
     private lateinit var btnPaste: ImageButton
     private lateinit var btnSettings: ImageButton
+    private lateinit var btnImport: ImageButton
     private lateinit var fabPlay: FloatingActionButton
     private lateinit var fabStop: FloatingActionButton
     private lateinit var seekBar: SeekBar
     private lateinit var autoCompleteTxt: AutoCompleteTextView
+    private lateinit var loadingOverlay: View
     
     private lateinit var sharedPreferences: SharedPreferences
     private var speechRate = 1.0f
@@ -45,11 +57,20 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private val languages = arrayOf("English - US", "Swahili - TZ", "Kirundi - BI")
     private val locales = arrayOf(Locale.US, Locale("sw", "TZ"), Locale("rn", "BI"))
 
+    private val filePickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                importFile(uri)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         
         startTime = System.currentTimeMillis()
+        PDFBoxResourceLoader.init(applicationContext)
         sharedPreferences = getSharedPreferences("TTS_PREFS", Context.MODE_PRIVATE)
         speechRate = sharedPreferences.getFloat("speech_rate", 1.0f)
         speechPitch = sharedPreferences.getFloat("speech_pitch", 1.0f)
@@ -67,10 +88,12 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         btnClear = findViewById(R.id.btn_clear)
         btnPaste = findViewById(R.id.btn_paste)
         btnSettings = findViewById(R.id.btn_settings)
+        btnImport = findViewById(R.id.btn_import)
         fabPlay = findViewById(R.id.fab_play)
         fabStop = findViewById(R.id.fab_stop)
         seekBar = findViewById(R.id.seek_bar)
         autoCompleteTxt = findViewById(R.id.auto_complete_txt)
+        loadingOverlay = findViewById(R.id.loading_overlay)
 
         updateSettingsIconState()
 
@@ -122,6 +145,15 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
 
         btnSettings.setOnClickListener { showSettingsDialog() }
+        
+        btnImport.setOnClickListener {
+            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain", "application/pdf"))
+            }
+            filePickerLauncher.launch(intent)
+        }
 
         fabPlay.setOnClickListener {
             if (isPlaying) stopPlayback() else startPlayback()
@@ -132,6 +164,51 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         // Initialize TTS
         tts = TextToSpeech(this, this)
         etInput.requestFocus()
+    }
+
+    private fun importFile(uri: Uri) {
+        loadingOverlay.visibility = View.VISIBLE
+        lifecycleScope.launch(Dispatchers.IO) {
+            val contentResolver = contentResolver
+            val mimeType = contentResolver.getType(uri)
+            var extractedText = ""
+            var error: String? = null
+
+            try {
+                if (mimeType == "application/pdf") {
+                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                        val document = PDDocument.load(inputStream)
+                        val stripper = PDFTextStripper()
+                        extractedText = stripper.getText(document)
+                        document.close()
+                    }
+                } else {
+                    contentResolver.openInputStream(uri)?.use { inputStream ->
+                        val reader = BufferedReader(InputStreamReader(inputStream))
+                        extractedText = reader.readText()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("Import", "Error reading file", e)
+                error = "Error: Could not read file."
+            }
+
+            withContext(Dispatchers.Main) {
+                loadingOverlay.visibility = View.GONE
+                if (error != null) {
+                    Toast.makeText(this@MainActivity, error, Toast.LENGTH_SHORT).show()
+                } else if (extractedText.trim().isEmpty()) {
+                    Toast.makeText(this@MainActivity, "No readable text found in this document.", Toast.LENGTH_SHORT).show()
+                } else {
+                    if (extractedText.length > 5000) {
+                        extractedText = extractedText.substring(0, 5000)
+                        Toast.makeText(this@MainActivity, "File too large. Only the first 5,000 characters were imported.", Toast.LENGTH_LONG).show()
+                    }
+                    stopPlayback()
+                    etInput.setText(extractedText)
+                }
+            }
+        }
     }
 
     private fun showSettingsDialog() {
@@ -145,7 +222,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val btnReset = view.findViewById<Button>(R.id.btn_reset)
         val btnPreview = view.findViewById<Button>(R.id.btn_preview)
 
-        // Set initial values: speed (0.5 to 2.0 -> 0 to 150), pitch (0.5 to 1.5 -> 0 to 100)
         seekSpeed.progress = ((speechRate - 0.5f) * 100).toInt()
         seekPitch.progress = ((speechPitch - 0.5f) * 100).toInt()
         tvSpeedLabel.text = "Speed: %.1fx".format(speechRate)
@@ -196,7 +272,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun applySettings() {
         tts?.setSpeechRate(speechRate)
         tts?.setPitch(speechPitch)
-        // If playing, re-speak from current position for real-time feel
         if (isPlaying && !etInput.text.isNullOrEmpty()) {
             val params = Bundle()
             params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "TTS_READER")
