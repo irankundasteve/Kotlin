@@ -84,7 +84,7 @@
             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="16dp"
             android:hint="Select Voice"
             app:hintTextColor="@color/primary"
             app:layout_constraintTop_toBottomOf="@id/input_container"
@@ -100,6 +100,16 @@
 
         </com.google.android.material.textfield.TextInputLayout>
 
+        <SeekBar
+            android:id="@+id/seek_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:progressTint="@color/primary"
+            android:thumbTint="@color/primary"
+            android:visibility="invisible"
+            app:layout_constraintTop_toBottomOf="@id/menu_language" />
+
         <TextView
             android:id="@+id/tv_version"
             android:layout_width="wrap_content"
@@ -113,17 +123,35 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab_play"
+    <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
         android:layout_margin="24dp"
-        android:contentDescription="Play"
-        android:enabled="false"
-        android:alpha="0.5"
-        app:backgroundTint="@color/primary"
-        app:srcCompat="@drawable/ic_play"
-        app:tint="@color/background_dark" />
+        android:orientation="horizontal">
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fab_stop"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"
+            android:contentDescription="Stop"
+            android:visibility="gone"
+            app:backgroundTint="#FF4444"
+            app:fabSize="mini"
+            app:srcCompat="@drawable/ic_stop"
+            app:tint="@color/white" />
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fab_play"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="Play"
+            android:enabled="false"
+            android:alpha="0.5"
+            app:backgroundTint="@color/primary"
+            app:srcCompat="@drawable/ic_play"
+            app:tint="@color/background_dark" />
+    </LinearLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
