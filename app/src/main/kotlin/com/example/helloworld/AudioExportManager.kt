@@ -32,8 +32,8 @@ enum class AudioExportFormat(
         "WAV",
         "wav",
         "audio/wav",
-        Environment.DIRECTORY_DOCUMENTS,
-        "${Environment.DIRECTORY_DOCUMENTS}/TTS_Reader"
+        Environment.DIRECTORY_MUSIC,
+        "${Environment.DIRECTORY_MUSIC}/TTS_Reader"
     )
 }
 
@@ -79,7 +79,11 @@ object AudioExportManager {
         val resolver = context.contentResolver
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val collection = if (format.mimeType.startsWith("audio/")) {
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            } else {
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            }
 
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)

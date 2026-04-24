@@ -395,8 +395,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val tempWav = File(cacheDir, "tts_export_${System.currentTimeMillis()}.wav")
-            val tempMp3 = File(cacheDir, "tts_export_${System.currentTimeMillis()}.mp3")
+            val tempDir = externalCacheDir ?: cacheDir
+            val tempWav = File(tempDir, "tts_export_${System.currentTimeMillis()}.wav")
+            val tempMp3 = File(tempDir, "tts_export_${System.currentTimeMillis()}.mp3")
 
             try {
                 updateExportProgress(12, getString(R.string.export_progress_synthesizing))
