@@ -1,10 +1,12 @@
 package com.example.helloworld
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -20,6 +22,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -34,6 +37,7 @@ import com.google.android.material.tabs.TabLayout
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -43,12 +47,14 @@ import java.io.File
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
     private var isPlaying = false
+    private var isExporting = false
     private var startTime: Long = 0
 
     private lateinit var etInput: EditText
@@ -61,6 +67,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var btnFavorite: ImageButton
     private lateinit var btnHelp: ImageButton
     private lateinit var fabPlay: FloatingActionButton
+    private lateinit var fabExport: FloatingActionButton
     private lateinit var fabStop: FloatingActionButton
     private lateinit var seekBar: SeekBar
     private lateinit var autoCompleteTxt: AutoCompleteTextView
@@ -70,6 +77,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var database: AppDatabase
     private var speechRate = 1.0f
     private var speechPitch = 1.0f
+    private var lastExportUri: Uri? = null
+    private var lastExportMimeType: String? = null
+    private var pendingExportFormat: AudioExportFormat? = null
 
     private var currentSettings = AppSettings()
     private val accentColors = listOf(
@@ -80,6 +90,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         -6737302,  // #9C27B0 (Purple)
         -769226    // #F44336 (Red)
     )
+
+    private val exportProgressHandler = Handler(Looper.getMainLooper())
+    private val pendingFileSyntheses = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
+    private var exportProgressRunnable: Runnable? = null
+    private var exportDialog: AlertDialog? = null
+    private var exportProgressBar: ProgressBar? = null
+    private var exportStatusText: TextView? = null
+    private var exportPercentText: TextView? = null
+    private var exportSuccessIcon: ImageView? = null
+    private var exportShareButton: Button? = null
+    private var exportCloseButton: Button? = null
 
     private val languages = arrayOf("English - US", "Swahili - TZ", "Kirundi - BI")
     private val locales = arrayOf(Locale.US, Locale("sw", "TZ"), Locale("rn", "BI"))
@@ -278,7 +299,276 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         updateButtonsState(etInput.text?.isNotEmpty() == true)
     }
 
-    private fun importFile(uri: Uri) {
+    private fun showExportMenu(anchor: View) {
+        val text = etInput.text.toString().trim()
+        if (text.isEmpty()) {
+            Toast.makeText(this, R.string.export_requires_text, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!isTtsReady) {
+            Toast.makeText(this, R.string.tts_not_ready, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        PopupMenu(this, anchor).apply {
+            menu.add(0, AudioExportFormat.MP3.ordinal, 0, getString(R.string.export_mp3))
+            menu.add(0, AudioExportFormat.WAV.ordinal, 1, getString(R.string.export_wav))
+            setOnMenuItemClickListener { item ->
+                val format = AudioExportFormat.values().getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
+                runCatching { beginExport(format) }
+                    .onFailure { error ->
+                        Toast.makeText(
+                            this@MainActivity,
+                            error.localizedMessage ?: getString(R.string.export_failed),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                true
+            }
+            show()
+        }
+    }
+
+    private fun beginExport(format: AudioExportFormat) {
+        val text = etInput.text.toString().trim()
+        if (isExporting) return
+        if (text.isEmpty()) {
+            Toast.makeText(this, R.string.export_requires_text, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!canWriteToPublicStorage()) {
+            pendingExportFormat = format
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
+        beginExportInternal(format)
+    }
+
+    private fun beginExportInternal(format: AudioExportFormat) {
+        val text = etInput.text.toString().trim()
+        try {
+            stopPlayback()
+            isExporting = true
+            lastExportUri = null
+            lastExportMimeType = null
+            updateButtonsState(text.isNotEmpty())
+            showExportDialog()
+            updateExportProgress(0, getString(R.string.export_progress_initial))
+            animateExportProgress(15, 140L)
+        } catch (error: Exception) {
+            isExporting = false
+            dismissExportDialog()
+            updateButtonsState(text.isNotEmpty())
+            Toast.makeText(
+                this,
+                error.localizedMessage ?: getString(R.string.export_failed),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val tempDir = externalCacheDir ?: cacheDir
+            val tempWav = File(tempDir, "tts_export_${System.currentTimeMillis()}.wav")
+            val tempMp3 = File(tempDir, "tts_export_${System.currentTimeMillis()}.mp3")
+
+            try {
+                updateExportProgress(12, getString(R.string.export_progress_synthesizing))
+                animateExportProgress(calculateSynthesisProgressCap(text.length), 180L)
+
+                awaitSynthesisToFile(text, tempWav, "EXPORT_${System.currentTimeMillis()}")
+                
+                if (!tempWav.exists() || tempWav.length() == 0L) {
+                    throw IllegalStateException("The audio file was not generated by the speech engine.")
+                }
+
+                updateExportProgress(70, getString(R.string.export_progress_encoding))
+
+                val finalSource = if (format == AudioExportFormat.MP3) {
+                    animateExportProgress(88, 90L)
+                    AudioExportManager.convertWavToMp3(tempWav, tempMp3)
+                    tempMp3
+                } else {
+                    tempWav
+                }
+
+                updateExportProgress(92, getString(R.string.export_progress_saving))
+                animateExportProgress(98, 110L)
+                val exportResult = AudioExportManager.saveToPublicStorage(this@MainActivity, finalSource, format)
+                
+                withContext(Dispatchers.Main) {
+                    lastExportUri = exportResult.uri
+                    lastExportMimeType = format.mimeType
+                    showExportSuccess(exportResult.displayName)
+                }
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    dismissExportDialog()
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Export Error: ${error.localizedMessage ?: "Unknown error"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } finally {
+                stopExportProgressAnimation()
+                if (tempWav.exists()) tempWav.delete()
+                if (tempMp3.exists()) tempMp3.delete()
+                withContext(Dispatchers.Main) {
+                    isExporting = false
+                    updateButtonsState(etInput.text?.isNotEmpty() == true)
+                }
+            }
+        }
+    }
+
+    private suspend fun awaitSynthesisToFile(text: String, outputFile: File, utteranceId: String) {
+        val deferred = CompletableDeferred<Unit>()
+        pendingFileSyntheses[utteranceId] = deferred
+
+        try {
+            val synthesisResult = withContext(Dispatchers.Main) {
+                val engine = tts
+                if (engine == null || !isTtsReady) {
+                    throw IllegalStateException("TTS Engine is not ready for synthesis.")
+                }
+                engine.stop()
+                engine.synthesizeToFile(text, Bundle(), outputFile, utteranceId)
+            }
+
+            if (synthesisResult == TextToSpeech.ERROR) {
+                pendingFileSyntheses.remove(utteranceId)
+                throw IllegalStateException("The speech engine failed to start the synthesis task.")
+            }
+
+            val timeout = (text.length * 20L).coerceAtLeast(30000L).coerceAtMost(120000L)
+            
+            kotlinx.coroutines.withTimeout(timeout) {
+                deferred.await()
+            }
+
+            if (!outputFile.exists() || outputFile.length() == 0L) {
+                throw IllegalStateException("The speech engine finished but the output file is missing or empty.")
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            pendingFileSyntheses.remove(utteranceId)
+            throw IllegalStateException("Synthesis timed out. The text might be too long for the current voice engine.")
+        } catch (e: Exception) {
+            pendingFileSyntheses.remove(utteranceId)
+            throw e
+        }
+    }
+
+    private fun showExportDialog() {
+        dismissExportDialog()
+        val view = layoutInflater.inflate(R.layout.dialog_export_progress, null)
+        exportProgressBar = view.findViewById(R.id.progress_export)
+        exportStatusText = view.findViewById(R.id.tv_export_status)
+        exportPercentText = view.findViewById(R.id.tv_export_percent)
+        exportSuccessIcon = view.findViewById(R.id.iv_export_success)
+        exportShareButton = view.findViewById(R.id.btn_export_share)
+        exportCloseButton = view.findViewById(R.id.btn_export_close)
+
+        val accentTint = android.content.res.ColorStateList.valueOf(currentSettings.accentColor)
+        
+        exportProgressBar?.progressTintList = accentTint
+        exportShareButton?.backgroundTintList = accentTint
+        
+        exportSuccessIcon?.let { icon ->
+            val successColor = ContextCompat.getColor(this, R.color.success_green)
+            icon.imageTintList = android.content.res.ColorStateList.valueOf(successColor)
+        }
+
+        exportShareButton?.setOnClickListener { shareLastExport() }
+        exportCloseButton?.setOnClickListener { dismissExportDialog() }
+
+        exportDialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+        exportDialog?.show()
+    }
+
+    private fun updateExportProgress(progress: Int, status: String) {
+        runOnUiThread {
+            val value = progress.coerceIn(0, 100)
+            exportProgressBar?.progress = value
+            exportStatusText?.text = status
+            exportPercentText?.text = "$value%"
+        }
+    }
+
+    private fun animateExportProgress(target: Int, delayMillis: Long) {
+        stopExportProgressAnimation()
+        val safeTarget = target.coerceIn(0, 95)
+        exportProgressRunnable = object : Runnable {
+            override fun run() {
+                val current = exportProgressBar?.progress ?: 0
+                if (current < safeTarget) {
+                    updateExportProgress(current + 1, exportStatusText?.text?.toString() ?: "")
+                    exportProgressHandler.postDelayed(this, delayMillis)
+                }
+            }
+        }
+        exportProgressRunnable?.let(exportProgressHandler::post)
+    }
+
+    private fun stopExportProgressAnimation() {
+        exportProgressRunnable?.let(exportProgressHandler::removeCallbacks)
+        exportProgressRunnable = null
+    }
+
+    private fun showExportSuccess(fileName: String) {
+        stopExportProgressAnimation()
+        updateExportProgress(100, getString(R.string.export_complete))
+        runOnUiThread {
+            exportProgressBar?.visibility = View.GONE
+            exportPercentText?.visibility = View.GONE
+            exportSuccessIcon?.visibility = View.VISIBLE
+            exportShareButton?.visibility = View.VISIBLE
+            exportCloseButton?.visibility = View.VISIBLE
+            Toast.makeText(this, getString(R.string.export_saved_to, fileName), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun calculateSynthesisProgressCap(textLength: Int): Int {
+        return when {
+            textLength >= 4000 -> 76
+            textLength >= 2500 -> 70
+            textLength >= 1200 -> 64
+            else -> 58
+        }
+    }
+
+    private fun canWriteToPublicStorage(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun dismissExportDialog() {
+        stopExportProgressAnimation()
+        exportDialog?.dismiss()
+        exportDialog = null
+        exportProgressBar = null
+        exportStatusText = null
+        exportPercentText = null
+        exportSuccessIcon = null
+        exportShareButton = null
+        exportCloseButton = null
+    }
+
+    private fun shareLastExport() {
+        val exportUri = lastExportUri ?: return
+        val mimeType = lastExportMimeType ?: "audio/*"
+        
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, exportUri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(intent, getString(R.string.share_audio_sheet_title)))
+    }
+
         loadingOverlay.visibility = View.VISIBLE
         lifecycleScope.launch(Dispatchers.IO) {
             var extractedText = ""
