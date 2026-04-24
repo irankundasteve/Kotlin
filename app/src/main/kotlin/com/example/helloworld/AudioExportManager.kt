@@ -4,10 +4,15 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import de.sciss.jump3r.Main
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
@@ -68,6 +73,74 @@ object AudioExportManager {
         }
         
         require(targetMp3.exists() && targetMp3.length() > 0L) { "MP3 encoding did not produce an output file." }
+    }
+
+    suspend fun synthesizeToWav(
+        context: Context,
+        text: String,
+        locale: Locale,
+        speechRate: Float,
+        speechPitch: Float,
+        outputFile: File
+    ) = withContext(Dispatchers.Main) {
+        val initDeferred = CompletableDeferred<Unit>()
+        val completionDeferred = CompletableDeferred<Unit>()
+        lateinit var exportTts: TextToSpeech
+        val utteranceId = "EXPORT_${System.currentTimeMillis()}"
+
+        try {
+            exportTts = TextToSpeech(context.applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    initDeferred.complete(Unit)
+                } else {
+                    initDeferred.completeExceptionally(
+                        IllegalStateException("TTS initialization failed for audio export.")
+                    )
+                }
+            }
+
+            withTimeout(15000) { initDeferred.await() }
+            exportTts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) = Unit
+
+                override fun onDone(utteranceId: String?) {
+                    completionDeferred.complete(Unit)
+                }
+
+                override fun onError(utteranceId: String?) {
+                    completionDeferred.completeExceptionally(
+                        IllegalStateException("TTS engine failed while generating the audio file.")
+                    )
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?, errorCode: Int) {
+                    completionDeferred.completeExceptionally(
+                        IllegalStateException("TTS engine failed with error code $errorCode.")
+                    )
+                }
+            })
+
+            exportTts.language = locale
+            exportTts.setSpeechRate(speechRate)
+            exportTts.setPitch(speechPitch)
+
+            val result = exportTts.synthesizeToFile(text, Bundle(), outputFile, utteranceId)
+            if (result == TextToSpeech.ERROR) {
+                throw IllegalStateException("The speech engine could not start audio export.")
+            }
+
+            withTimeout(60000) { completionDeferred.await() }
+
+            require(outputFile.exists() && outputFile.length() > 0L) {
+                "The speech engine did not generate an audio file."
+            }
+        } finally {
+            if (::exportTts.isInitialized) {
+                exportTts.stop()
+                exportTts.shutdown()
+            }
+        }
     }
 
     suspend fun saveToPublicStorage(
