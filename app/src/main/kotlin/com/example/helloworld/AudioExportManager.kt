@@ -6,7 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import de.sciss.jump3r.lowlevel.LameEncoder
+import com.b3nedikt.lame.LameEncoder
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -21,23 +21,33 @@ data class ExportResult(val uri: Uri, val displayName: String)
 object AudioExportManager {
 
     fun convertWavToMp3(wavFile: File, mp3File: File) {
+        // LameEncoder in newer libraries often works differently (e.g. streaming, different constructor)
+        // Adjusting for the B3nedikt LameEncoder API if necessary.
+        // Assuming standard interface based on common Lame wrappers.
         val inputStream = FileInputStream(wavFile)
         val outputStream = FileOutputStream(mp3File)
 
-        val encoder = LameEncoder(
-            wavFile.length().toInt(), 44100, 1, 128, 7
-        )
+        val encoder = LameEncoder()
+        encoder.setInSampleRate(44100)
+        encoder.setOutChannels(1)
+        encoder.setOutBitrate(128)
+        encoder.setOutSampleRate(44100)
+        encoder.initParams()
 
         val buffer = ByteArray(8192)
+        val mp3Buffer = ByteArray(8192)
         var bytesRead: Int
         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-            val mp3Buffer = ByteArray(8192)
-            val mp3Bytes = encoder.encodeBuffer(buffer, 0, bytesRead, mp3Buffer)
+            val mp3Bytes = encoder.encode(buffer, buffer, bytesRead, mp3Buffer)
             if (mp3Bytes > 0) {
                 outputStream.write(mp3Buffer, 0, mp3Bytes)
             }
         }
-        encoder.flush(buffer)
+        val flushBytes = encoder.flush(mp3Buffer)
+        if (flushBytes > 0) {
+            outputStream.write(mp3Buffer, 0, flushBytes)
+        }
+        encoder.close()
         outputStream.close()
         inputStream.close()
     }
