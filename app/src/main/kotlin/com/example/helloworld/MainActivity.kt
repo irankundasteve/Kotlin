@@ -471,6 +471,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         stopExportProgressAnimation()
         updateExportProgress(100, getString(R.string.export_complete))
         runOnUiThread {
+            exportProgressBar?.visibility = View.GONE
+            exportPercentText?.visibility = View.GONE
             exportSuccessIcon?.visibility = View.VISIBLE
             exportShareButton?.visibility = View.VISIBLE
             exportCloseButton?.visibility = View.VISIBLE
