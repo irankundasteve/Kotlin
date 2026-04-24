@@ -26,6 +26,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.widget.ImageViewCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -486,6 +487,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         exportSuccessIcon = view.findViewById(R.id.iv_export_success)
         exportShareButton = view.findViewById(R.id.btn_export_share)
         exportCloseButton = view.findViewById(R.id.btn_export_close)
+
+        val accentTint = android.content.res.ColorStateList.valueOf(currentSettings.accentColor)
+        exportProgressBar?.progressTintList = accentTint
+        exportShareButton?.backgroundTintList = accentTint
+        exportSuccessIcon?.let { icon ->
+            ImageViewCompat.setImageTintList(
+                icon,
+                android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this, R.color.success_green))
+            )
+        }
 
         exportShareButton?.setOnClickListener { shareLastExport() }
         exportCloseButton?.setOnClickListener { dismissExportDialog() }
