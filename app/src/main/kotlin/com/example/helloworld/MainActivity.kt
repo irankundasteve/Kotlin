@@ -75,6 +75,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private var lastExportUri: Uri? = null
     private var lastExportMimeType: String? = null
 
+    private var currentSettings = AppSettings()
+    private val accentColors = listOf(
+        -12450820, // #BB86FC (Vivid Blue)
+        -13318567, // #34C759 (Soft Green)
+        -16740922, // #009688 (Teal)
+        -14575885, // #2196F3 (Blue)
+        -6737302,  // #9C27B0 (Purple)
+        -769226    // #F44336 (Red)
+    )
+
     private val pendingFileSyntheses = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
     private val exportProgressHandler = Handler(Looper.getMainLooper())
     private var exportProgressRunnable: Runnable? = null
@@ -107,6 +117,22 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         sharedPreferences = getSharedPreferences("TTS_PREFS", Context.MODE_PRIVATE)
         speechRate = sharedPreferences.getFloat("speech_rate", 1.0f)
         speechPitch = sharedPreferences.getFloat("speech_pitch", 1.0f)
+
+        lifecycleScope.launch {
+            database.settingsDao().getSettings().collect { settings ->
+                val s = settings ?: AppSettings()
+                if (s.themeMode != currentSettings.themeMode) {
+                    val mode = when (s.themeMode) {
+                        1 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                        2 -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                        else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                    }
+                    androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(mode)
+                }
+                currentSettings = s
+                applyAccentColor(s.accentColor)
+            }
+        }
 
         splashScreen.setKeepOnScreenCondition {
             val elapsedTime = System.currentTimeMillis() - startTime
@@ -218,7 +244,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             )
             database.historyDao().insert(item)
             withContext(Dispatchers.Main) {
-                btnFavorite.setColorFilter(Color.RED)
+                btnFavorite.setColorFilter(currentSettings.accentColor)
                 Toast.makeText(this@MainActivity, "Saved to Favorites", Toast.LENGTH_SHORT).show()
             }
         }
@@ -263,7 +289,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         fabPlay.setImageResource(R.drawable.ic_play)
         fabStop.visibility = View.GONE
         seekBar.visibility = View.INVISIBLE
-        btnFavorite.setColorFilter(Color.WHITE)
+        
+        val typedValue = android.util.TypedValue()
+        theme.resolveAttribute(android.R.attr.textColorPrimary, typedValue, true)
+        btnFavorite.setColorFilter(typedValue.data)
+        
         etInput.setText(SpannableString(etInput.text.toString()))
         updateButtonsState(etInput.text?.isNotEmpty() == true)
     }
@@ -554,6 +584,52 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val seekPitch = view.findViewById<SeekBar>(R.id.seek_pitch)
         val tvSpeedLabel = view.findViewById<TextView>(R.id.tv_speed_label)
         val tvPitchLabel = view.findViewById<TextView>(R.id.tv_pitch_label)
+        
+        val rgTheme = view.findViewById<RadioGroup>(R.id.rg_theme)
+        val llAccentColors = view.findViewById<LinearLayout>(R.id.ll_accent_colors)
+
+        // Setup Theme Selection
+        when (currentSettings.themeMode) {
+            1 -> rgTheme.check(R.id.rb_light)
+            2 -> rgTheme.check(R.id.rb_dark)
+            else -> rgTheme.check(R.id.rb_system)
+        }
+        
+        rgTheme.setOnCheckedChangeListener { _, checkedId ->
+            val mode = when (checkedId) {
+                R.id.rb_light -> 1
+                R.id.rb_dark -> 2
+                else -> 0
+            }
+            if (mode != currentSettings.themeMode) {
+                lifecycleScope.launch {
+                    database.settingsDao().updateSettings(currentSettings.copy(themeMode = mode))
+                }
+            }
+        }
+
+        // Setup Accent Colors
+        accentColors.forEach { color ->
+            val colorView = View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(120, 120).apply {
+                    setMargins(0, 0, 24, 0)
+                }
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(color)
+                    if (color == currentSettings.accentColor) {
+                        setStroke(6, if (currentSettings.themeMode == 2) Color.WHITE else Color.BLACK)
+                    }
+                }
+                setOnClickListener {
+                    lifecycleScope.launch {
+                        database.settingsDao().updateSettings(currentSettings.copy(accentColor = color))
+                    }
+                    dialog.dismiss()
+                }
+            }
+            llAccentColors.addView(colorView)
+        }
 
         seekSpeed.progress = ((speechRate - 0.5f) * 100).toInt()
         seekPitch.progress = ((speechPitch - 0.5f) * 100).toInt()
@@ -609,8 +685,33 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
+    private fun applyAccentColor(color: Int) {
+        val colorStateList = android.content.res.ColorStateList.valueOf(color)
+        
+        fabPlay.backgroundTintList = colorStateList
+        seekBar.progressTintList = colorStateList
+        seekBar.thumbTintList = colorStateList
+        
+        findViewById<com.google.android.material.textfield.TextInputLayout>(R.id.menu_language).apply {
+            setStartIconTintList(colorStateList)
+            boxStrokeColor = color
+            hintTextColor = colorStateList
+        }
+        
+        loadingOverlay.findViewById<ProgressBar>(R.id.progress_bar)?.indeterminateTintList = colorStateList
+        
+        updateSettingsIconState()
+    }
+
     private fun updateSettingsIconState() {
-        btnSettings.setColorFilter(if (speechRate != 1.0f || speechPitch != 1.0f) Color.parseColor("#BB86FC") else Color.WHITE)
+        val iconColor = if (speechRate != 1.0f || speechPitch != 1.0f) {
+            currentSettings.accentColor
+        } else {
+            val typedValue = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.textColorPrimary, typedValue, true)
+            typedValue.data
+        }
+        btnSettings.setColorFilter(iconColor)
     }
 
     override fun onInit(status: Int) {
