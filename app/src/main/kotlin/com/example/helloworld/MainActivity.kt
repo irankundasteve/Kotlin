@@ -202,7 +202,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         btnHelp.setOnClickListener { showHelpDialog() }
 
         fabPlay.setOnClickListener { if (isPlaying) stopPlayback() else startPlayback() }
-        fabExport.setOnClickListener { showExportMenu(it) }
+        fabExport.setOnClickListener {
+            runCatching { showExportMenu(it) }
+                .onFailure { error ->
+                    Toast.makeText(
+                        this,
+                        error.localizedMessage ?: getString(R.string.export_failed),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+        }
         fabStop.setOnClickListener { stopPlayback() }
 
         // Initialize TTS
@@ -328,7 +337,15 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             menu.add(0, AudioExportFormat.MP3.ordinal, 0, getString(R.string.export_mp3))
             menu.add(0, AudioExportFormat.WAV.ordinal, 1, getString(R.string.export_wav))
             setOnMenuItemClickListener { item ->
-                beginExport(AudioExportFormat.entries[item.itemId])
+                val format = AudioExportFormat.values().getOrNull(item.itemId) ?: return@setOnMenuItemClickListener false
+                runCatching { beginExport(format) }
+                    .onFailure { error ->
+                        Toast.makeText(
+                            this@MainActivity,
+                            error.localizedMessage ?: getString(R.string.export_failed),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
                 true
             }
             show()
@@ -351,15 +368,27 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun beginExportInternal(format: AudioExportFormat) {
-        stopPlayback()
-        isExporting = true
-        lastExportUri = null
-        lastExportMimeType = null
         val text = etInput.text.toString().trim()
-        updateButtonsState(text.isNotEmpty())
-        showExportDialog()
-        updateExportProgress(0, getString(R.string.export_progress_initial))
-        animateExportProgress(15, 140L)
+        try {
+            stopPlayback()
+            isExporting = true
+            lastExportUri = null
+            lastExportMimeType = null
+            updateButtonsState(text.isNotEmpty())
+            showExportDialog()
+            updateExportProgress(0, getString(R.string.export_progress_initial))
+            animateExportProgress(15, 140L)
+        } catch (error: Exception) {
+            isExporting = false
+            dismissExportDialog()
+            updateButtonsState(text.isNotEmpty())
+            Toast.makeText(
+                this,
+                error.localizedMessage ?: getString(R.string.export_failed),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
 
         lifecycleScope.launch(Dispatchers.IO) {
             val exportDir = getExternalFilesDir(null) ?: cacheDir
