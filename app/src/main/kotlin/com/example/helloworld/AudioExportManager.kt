@@ -18,10 +18,23 @@ enum class AudioExportFormat(
     val displayName: String,
     val extension: String,
     val mimeType: String,
+    val publicDirectory: String,
     val relativeDirectory: String
 ) {
-    MP3("MP3", "mp3", "audio/mpeg", "${Environment.DIRECTORY_MUSIC}/TTS_Reader"),
-    WAV("WAV", "wav", "audio/wav", "${Environment.DIRECTORY_DOCUMENTS}/TTS_Reader")
+    MP3(
+        "MP3",
+        "mp3",
+        "audio/mpeg",
+        Environment.DIRECTORY_MUSIC,
+        "${Environment.DIRECTORY_MUSIC}/TTS_Reader"
+    ),
+    WAV(
+        "WAV",
+        "wav",
+        "audio/wav",
+        Environment.DIRECTORY_DOCUMENTS,
+        "${Environment.DIRECTORY_DOCUMENTS}/TTS_Reader"
+    )
 }
 
 data class AudioExportResult(
@@ -66,13 +79,13 @@ object AudioExportManager {
         val resolver = context.contentResolver
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
 
             val values = ContentValues().apply {
-                put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
-                put(MediaStore.Audio.Media.MIME_TYPE, format.mimeType)
-                put(MediaStore.Audio.Media.RELATIVE_PATH, format.relativeDirectory)
-                put(MediaStore.Audio.Media.IS_PENDING, 1)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, format.mimeType)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, format.relativeDirectory)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
 
             val uri = resolver.insert(collection, values)
@@ -84,7 +97,7 @@ object AudioExportManager {
                 } ?: throw IllegalStateException("Failed to open output stream for storage. Error code: 102")
 
                 val pendingValues = ContentValues().apply {
-                    put(MediaStore.Audio.Media.IS_PENDING, 0)
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
                 }
                 resolver.update(uri, pendingValues, null, null)
             } catch (e: Exception) {
@@ -93,9 +106,7 @@ object AudioExportManager {
             }
             AudioExportResult(uri, fileName)
         } else {
-            val rootDirectory = Environment.getExternalStoragePublicDirectory(
-                if (format == AudioExportFormat.MP3) Environment.DIRECTORY_MUSIC else Environment.DIRECTORY_DOCUMENTS
-            )
+            val rootDirectory = Environment.getExternalStoragePublicDirectory(format.publicDirectory)
             val targetDirectory = File(rootDirectory, "TTS_Reader").apply { mkdirs() }
             val targetFile = File(targetDirectory, fileName)
             sourceFile.copyTo(targetFile, overwrite = true)
