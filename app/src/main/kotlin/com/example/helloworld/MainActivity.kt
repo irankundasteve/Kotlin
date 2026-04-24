@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var btnImport: ImageButton
     private lateinit var btnHistory: ImageButton
     private lateinit var btnFavorite: ImageButton
+    private lateinit var btnHelp: ImageButton
     private lateinit var fabPlay: FloatingActionButton
     private lateinit var fabExport: FloatingActionButton
     private lateinit var fabStop: FloatingActionButton
@@ -150,6 +151,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         btnImport = findViewById(R.id.btn_import)
         btnHistory = findViewById(R.id.btn_history)
         btnFavorite = findViewById(R.id.btn_favorite)
+        btnHelp = findViewById(R.id.btn_help)
         fabPlay = findViewById(R.id.fab_play)
         fabExport = findViewById(R.id.fab_export)
         fabStop = findViewById(R.id.fab_stop)
@@ -185,6 +187,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         btnImport.setOnClickListener { openFilePicker() }
         btnHistory.setOnClickListener { showHistoryPanel() }
         btnFavorite.setOnClickListener { saveToFavorites() }
+        btnHelp.setOnClickListener { showHelpDialog() }
 
         fabPlay.setOnClickListener { if (isPlaying) stopPlayback() else startPlayback() }
         fabExport.setOnClickListener { showExportMenu(it) }
@@ -339,8 +342,9 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         animateExportProgress(18)
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val tempWav = File(cacheDir, "tts_export_${System.currentTimeMillis()}.wav")
-            val tempMp3 = File(cacheDir, "tts_export_${System.currentTimeMillis()}.mp3")
+            val exportDir = getExternalFilesDir(null) ?: cacheDir
+            val tempWav = File(exportDir, "tts_export_${System.currentTimeMillis()}.wav")
+            val tempMp3 = File(exportDir, "tts_export_${System.currentTimeMillis()}.mp3")
 
             try {
                 updateExportProgress(12, getString(R.string.export_progress_synthesizing))
@@ -605,6 +609,78 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         if (index != -1) tts?.language = locales[index]
         applySettings()
         updateSettingsIconState()
+    }
+
+    private fun showHelpDialog() {
+        val dialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.help_dialog, null)
+        
+        val tabs = view.findViewById<com.google.android.material.tabs.TabLayout>(R.id.help_tabs)
+        val layoutTutorial = view.findViewById<View>(R.id.layout_tutorial)
+        val layoutFeedback = view.findViewById<View>(R.id.layout_feedback)
+        val layoutAbout = view.findViewById<View>(R.id.layout_about)
+
+        tabs.addOnTabSelectedListener(object : com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab?) {
+                layoutTutorial.visibility = if (tab?.position == 0) View.VISIBLE else View.GONE
+                layoutFeedback.visibility = if (tab?.position == 1) View.VISIBLE else View.GONE
+                layoutAbout.visibility = if (tab?.position == 2) View.VISIBLE else View.GONE
+            }
+            override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab?) {}
+            override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab?) {}
+        })
+
+        // Tutorial Logic
+        val flipper = view.findViewById<ViewFlipper>(R.id.tutorial_flipper)
+        val tvPage = view.findViewById<TextView>(R.id.tv_tutorial_page)
+        view.findViewById<Button>(R.id.btn_tutorial_prev).setOnClickListener {
+            flipper.showPrevious()
+            tvPage.text = "${flipper.displayedChild + 1} / 3"
+        }
+        view.findViewById<Button>(R.id.btn_tutorial_next).setOnClickListener {
+            if (flipper.displayedChild == 2) dialog.dismiss()
+            else {
+                flipper.showNext()
+                tvPage.text = "${flipper.displayedChild + 1} / 3"
+            }
+        }
+
+        // Feedback Logic
+        val categories = arrayOf("Bug Report", "Feature Request", "General")
+        val adapter = ArrayAdapter(this, R.layout.list_item, categories)
+        val autoCategory = view.findViewById<AutoCompleteTextView>(R.id.feedback_category)
+        autoCategory.setAdapter(adapter)
+        
+        view.findViewById<Button>(R.id.btn_submit_feedback).setOnClickListener {
+            val message = view.findViewById<EditText>(R.id.feedback_message).text.toString()
+            if (message.isBlank()) return@setOnClickListener
+            
+            val intent = Intent(Intent.ACTION_SENDTO).apply {
+                data = Uri.parse("mailto:irankunda.steve@example.com")
+                putExtra(Intent.EXTRA_SUBJECT, "TTS Reader Feedback: ${autoCategory.text}")
+                putExtra(Intent.EXTRA_TEXT, message)
+            }
+            try {
+                startActivity(Intent.createChooser(intent, "Send Feedback"))
+                dialog.dismiss()
+            } catch (e: Exception) {
+                Toast.makeText(this, "No email app found.", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // About Logic
+        try {
+            val pInfo = packageManager.getPackageInfo(packageName, 0)
+            view.findViewById<TextView>(R.id.tv_app_version).text = "Version ${pInfo.versionName}"
+        } catch (e: Exception) {}
+
+        view.findViewById<Button>(R.id.btn_check_updates).setOnClickListener {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/irankundasteve/Kotlin"))
+            startActivity(intent)
+        }
+
+        dialog.setContentView(view)
+        dialog.show()
     }
 
     private fun showSettingsDialog() {

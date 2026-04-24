@@ -68,6 +68,16 @@
                 android:src="@drawable/ic_paste"
                 app:tint="?android:attr/textColorPrimary" />
 
+            <ImageButton
+                android:id="@+id/btn_help"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="end"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Help"
+                android:src="@drawable/ic_help"
+                app:tint="?android:attr/textColorPrimary" />
+
         </com.google.android.material.appbar.MaterialToolbar>
     </com.google.android.material.appbar.AppBarLayout>
 
