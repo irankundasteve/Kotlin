@@ -1,5 +1,22 @@
 <resources>
     <string name="app_name">Hello World Android</string>
+    <string name="export_audio">Export Audio</string>
+    <string name="export_mp3">MP3 (Compressed)</string>
+    <string name="export_wav">WAV (High Quality)</string>
+    <string name="exporting_title">Exporting...</string>
+    <string name="export_progress_initial">Preparing audio export…</string>
+    <string name="export_progress_synthesizing">Generating speech audio…</string>
+    <string name="export_progress_encoding">Encoding audio…</string>
+    <string name="export_progress_saving">Saving audio file…</string>
+    <string name="export_complete">Export Complete.</string>
+    <string name="share_audio">Share</string>
+    <string name="close">Close</string>
+    <string name="share_audio_sheet_title">Share audio</string>
+    <string name="export_failed">Export failed. Please try again.</string>
+    <string name="export_requires_text">Enter text before exporting.</string>
+    <string name="export_storage_permission_required">Storage permission is required to save audio on this Android version.</string>
+    <string name="export_saved_to">%1$s saved successfully.</string>
+    <string name="export_format_menu_title">Choose export format</string>
     <string name="tts_not_ready">Text to speech is not ready yet.</string>
     <string name="reading_file">Reading file...</string>
 </resources>

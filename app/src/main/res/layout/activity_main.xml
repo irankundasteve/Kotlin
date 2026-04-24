@@ -182,6 +182,19 @@
         android:orientation="horizontal">
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fab_export"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"
+            android:contentDescription="@string/export_audio"
+            android:enabled="false"
+            android:alpha="0.5"
+            app:backgroundTint="?android:attr/colorBackground"
+            app:fabSize="mini"
+            app:srcCompat="@drawable/ic_export"
+            app:tint="?android:attr/textColorPrimary" />
+
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/fab_stop"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
