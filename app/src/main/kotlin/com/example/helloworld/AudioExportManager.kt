@@ -13,6 +13,9 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import kotlin.math.min
 
 enum class AudioExportFormat(
     val displayName: String,
@@ -43,6 +46,8 @@ data class AudioExportResult(
 )
 
 object AudioExportManager {
+    private val mp3EncodingExecutor = Executors.newSingleThreadExecutor()
+    private const val MP3_ENCODING_TIMEOUT_MS = 120000L // 2 minutes
 
     fun buildFileName(format: AudioExportFormat, now: Long = System.currentTimeMillis()): String {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date(now))
@@ -62,12 +67,37 @@ object AudioExportManager {
         )
         
         try {
-            Main().run(args)
+            // Submit MP3 encoding task with timeout
+            val future = mp3EncodingExecutor.submit {
+                Main().run(args)
+            }
+            
+            // Wait for encoding with timeout
+            try {
+                future.get(MP3_ENCODING_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            } catch (e: Exception) {
+                future.cancel(true)
+                // Clean up partial MP3 file on timeout/error
+                if (targetMp3.exists()) {
+                    targetMp3.delete()
+                }
+                throw RuntimeException("MP3 encoding timeout or failed: ${e.message}", e)
+            }
+            
+            require(targetMp3.exists() && targetMp3.length() > 0L) { 
+                "MP3 encoding did not produce an output file." 
+            }
         } catch (e: Exception) {
-            throw RuntimeException("MP3 encoding failed: ${e.message}", e)
+            // Ensure cleanup on any error
+            if (targetMp3.exists()) {
+                try {
+                    targetMp3.delete()
+                } catch (deleteError: Exception) {
+                    android.util.Log.e("AudioExportManager", "Failed to clean up partial MP3 file", deleteError)
+                }
+            }
+            throw e
         }
-        
-        require(targetMp3.exists() && targetMp3.length() > 0L) { "MP3 encoding did not produce an output file." }
     }
 
     suspend fun saveToPublicStorage(
