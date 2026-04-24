@@ -356,6 +356,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                 val finalSource = if (format == AudioExportFormat.MP3) {
                     animateExportProgress(88)
+                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "Encoding to MP3...", Toast.LENGTH_SHORT).show() }
                     AudioExportManager.convertWavToMp3(tempWav, tempMp3)
                     tempMp3
                 } else {
@@ -363,6 +364,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 }
 
                 updateExportProgress(92, getString(R.string.export_progress_saving))
+                withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "Saving to storage...", Toast.LENGTH_SHORT).show() }
                 val exportResult = AudioExportManager.saveToPublicStorage(this@MainActivity, finalSource, format)
                 
                 withContext(Dispatchers.Main) {
@@ -744,11 +746,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            tts?.language = Locale.US
-            tts?.setSpeechRate(speechRate)
-            tts?.setPitch(speechPitch)
+            val result = tts?.setLanguage(Locale.US)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                runOnUiThread { Toast.makeText(this, "English language not supported on this device.", Toast.LENGTH_SHORT).show() }
+            }
+            
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(id: String?) {}
+                override fun onStart(id: String?) {
+                    if (id?.startsWith("EXPORT_") == true) {
+                        runOnUiThread { Toast.makeText(this@MainActivity, "Synthesis started...", Toast.LENGTH_SHORT).show() }
+                    }
+                }
                 override fun onDone(id: String?) {
                     val deferred = id?.let { pendingFileSyntheses.remove(it) }
                     if (deferred != null) {
@@ -761,7 +769,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 override fun onError(id: String?) {
                     val deferred = id?.let { pendingFileSyntheses.remove(it) }
                     if (deferred != null) {
-                        deferred.completeExceptionally(IllegalStateException(getString(R.string.export_failed)))
+                        deferred.completeExceptionally(IllegalStateException("TTS Engine reported an error during synthesis."))
+                    } else {
+                        runOnUiThread { stopPlayback() }
+                    }
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun onError(id: String?, errorCode: Int) {
+                    val deferred = id?.let { pendingFileSyntheses.remove(it) }
+                    if (deferred != null) {
+                        deferred.completeExceptionally(IllegalStateException("TTS Error Code: $errorCode"))
                     } else {
                         runOnUiThread { stopPlayback() }
                     }
@@ -772,7 +790,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 }
             })
             isTtsReady = true
-        } else isTtsReady = true
+        } else {
+            runOnUiThread { Toast.makeText(this, "TTS Initialization failed.", Toast.LENGTH_SHORT).show() }
+            isTtsReady = false
+        }
     }
 
     private fun highlightText(start: Int, end: Int) {
