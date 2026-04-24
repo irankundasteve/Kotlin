@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark"
+    android:background="?android:attr/windowBackground"
     android:orientation="vertical"
     android:padding="16dp">
 
@@ -12,7 +12,7 @@
         android:layout_height="4dp"
         android:layout_gravity="center_horizontal"
         android:layout_marginBottom="16dp"
-        android:background="#33FFFFFF" />
+        android:background="#33888888" />
 
     <RelativeLayout
         android:layout_width="match_parent"
@@ -23,7 +23,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="History &amp; Favorites"
-            android:textColor="@color/white"
+            android:textColor="?android:attr/textColorPrimary"
             android:textSize="20sp"
             android:textStyle="bold" />
 
@@ -41,10 +41,10 @@
         android:id="@+id/tab_layout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/background_dark"
-        app:tabTextColor="#88FFFFFF"
-        app:tabSelectedTextColor="@color/primary"
-        app:tabIndicatorColor="@color/primary">
+        android:background="?android:attr/windowBackground"
+        app:tabTextColor="?android:attr/textColorSecondary"
+        app:tabSelectedTextColor="?attr/accentColor"
+        app:tabIndicatorColor="?attr/accentColor">
         <com.google.android.material.tabs.TabItem android:text="Recent" />
         <com.google.android.material.tabs.TabItem android:text="Favorites" />
     </com.google.android.material.tabs.TabLayout>

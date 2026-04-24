@@ -3,19 +3,19 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_dark">
+    android:background="?android:attr/windowBackground">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/background_dark">
+        android:background="?android:attr/windowBackground">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
             app:title="TTS Reader"
-            app:titleTextColor="@color/white">
+            app:titleTextColor="?android:attr/textColorPrimary">
 
             <ImageButton
                 android:id="@+id/btn_history"
@@ -25,7 +25,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="History"
                 android:src="@drawable/ic_history"
-                app:tint="@color/white" />
+                app:tint="?android:attr/textColorPrimary" />
 
             <ImageButton
                 android:id="@+id/btn_favorite"
@@ -35,7 +35,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Favorite"
                 android:src="@drawable/ic_favorite"
-                app:tint="@color/white" />
+                app:tint="?android:attr/textColorPrimary" />
 
             <ImageButton
                 android:id="@+id/btn_import"
@@ -45,7 +45,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Import Document"
                 android:src="@drawable/ic_import"
-                app:tint="@color/white" />
+                app:tint="?android:attr/textColorPrimary" />
 
             <ImageButton
                 android:id="@+id/btn_settings"
@@ -56,7 +56,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Settings"
                 android:src="@drawable/ic_settings"
-                app:tint="@color/white" />
+                app:tint="?android:attr/textColorPrimary" />
 
             <ImageButton
                 android:id="@+id/btn_paste"
@@ -66,7 +66,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Paste"
                 android:src="@drawable/ic_paste"
-                app:tint="@color/white" />
+                app:tint="?android:attr/textColorPrimary" />
 
         </com.google.android.material.appbar.MaterialToolbar>
     </com.google.android.material.appbar.AppBarLayout>
@@ -94,8 +94,8 @@
                 android:inputType="textMultiLine"
                 android:padding="12dp"
                 android:paddingEnd="40dp"
-                android:textColor="@color/white"
-                android:textColorHint="#88FFFFFF" />
+                android:textColor="?android:attr/textColorPrimary"
+                android:textColorHint="?android:attr/textColorTertiary" />
 
             <ImageButton
                 android:id="@+id/btn_clear"
@@ -107,7 +107,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_clear"
                 android:visibility="gone"
-                app:tint="#88FFFFFF" />
+                app:tint="?android:attr/textColorTertiary" />
 
             <TextView
                 android:id="@+id/tv_counter"
@@ -116,7 +116,7 @@
                 android:layout_gravity="bottom|end"
                 android:layout_margin="8dp"
                 android:text="0 / 5000"
-                android:textColor="#88FFFFFF"
+                android:textColor="?android:attr/textColorTertiary"
                 android:textSize="12sp" />
         </FrameLayout>
 
@@ -127,17 +127,17 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:hint="Select Voice"
-            app:hintTextColor="@color/primary"
+            app:hintTextColor="?attr/accentColor"
             app:layout_constraintTop_toBottomOf="@id/input_container"
             app:startIconDrawable="@drawable/ic_voice"
-            app:startIconTint="@color/primary">
+            app:startIconTint="?attr/accentColor">
 
             <AutoCompleteTextView
                 android:id="@+id/auto_complete_txt"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="none"
-                android:textColor="@color/white" />
+                android:textColor="?android:attr/textColorPrimary" />
 
         </com.google.android.material.textfield.TextInputLayout>
 
@@ -146,8 +146,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:progressTint="@color/primary"
-            android:thumbTint="@color/primary"
+            android:progressTint="?attr/accentColor"
+            android:thumbTint="?attr/accentColor"
             android:visibility="invisible"
             app:layout_constraintTop_toBottomOf="@id/menu_language" />
 
@@ -156,7 +156,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="v1.0"
-            android:textColor="#88FFFFFF"
+            android:textColor="?android:attr/textColorTertiary"
             android:textSize="12sp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -179,10 +179,10 @@
             android:contentDescription="@string/export_audio"
             android:enabled="false"
             android:alpha="0.5"
-            app:backgroundTint="@color/white"
+            app:backgroundTint="?android:attr/colorBackground"
             app:fabSize="mini"
             app:srcCompat="@drawable/ic_export"
-            app:tint="@color/background_dark" />
+            app:tint="?android:attr/textColorPrimary" />
 
         <com.google.android.material.floatingactionbutton.FloatingActionButton
             android:id="@+id/fab_stop"
@@ -203,9 +203,9 @@
             android:contentDescription="Play"
             android:enabled="false"
             android:alpha="0.5"
-            app:backgroundTint="@color/primary"
+            app:backgroundTint="?attr/accentColor"
             app:srcCompat="@drawable/ic_play"
-            app:tint="@color/background_dark" />
+            app:tint="?android:attr/colorBackground" />
     </LinearLayout>
 
     <FrameLayout
@@ -225,9 +225,10 @@
             android:orientation="vertical">
 
             <ProgressBar
+                android:id="@+id/progress_bar"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:indeterminateTint="@color/primary" />
+                android:indeterminateTint="?attr/accentColor" />
 
             <TextView
                 android:layout_width="wrap_content"

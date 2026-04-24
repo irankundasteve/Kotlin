@@ -37,6 +37,9 @@ object AudioExportManager {
     }
 
     suspend fun convertWavToMp3(sourceWav: File, targetMp3: File) = withContext(Dispatchers.IO) {
+        require(sourceWav.exists()) { "Source WAV file does not exist." }
+        require(sourceWav.length() > 0L) { "Source WAV file is empty." }
+
         val args = arrayOf(
             "--preset", "standard",
             "-q", "0",
@@ -44,7 +47,13 @@ object AudioExportManager {
             sourceWav.absolutePath,
             targetMp3.absolutePath
         )
-        Main().run(args)
+        
+        try {
+            Main().run(args)
+        } catch (e: Exception) {
+            throw RuntimeException("MP3 encoding failed: ${e.message}", e)
+        }
+        
         require(targetMp3.exists() && targetMp3.length() > 0L) { "MP3 encoding did not produce an output file." }
     }
 

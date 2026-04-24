@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/background_dark"
+    android:background="?android:attr/windowBackground"
     android:orientation="vertical"
     android:padding="24dp">
 
@@ -12,13 +12,83 @@
         android:layout_height="4dp"
         android:layout_gravity="center_horizontal"
         android:layout_marginBottom="24dp"
-        android:background="#33FFFFFF" />
+        android:background="#33888888" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:text="Appearance"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <RadioGroup
+        android:id="@+id/rg_theme"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:id="@+id/rb_system"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="System"
+            android:textColor="?android:attr/textColorSecondary" />
+
+        <RadioButton
+            android:id="@+id/rb_light"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Light"
+            android:textColor="?android:attr/textColorSecondary" />
+
+        <RadioButton
+            android:id="@+id/rb_dark"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Dark"
+            android:textColor="?android:attr/textColorSecondary" />
+    </RadioGroup>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Accent Color"
+        android:textColor="?android:attr/textColorPrimary"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/ll_accent_colors"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingBottom="8dp" />
+    </HorizontalScrollView>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="24dp"
+        android:background="#1A888888" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
         android:text="Voice Settings"
-        android:textColor="@color/white"
+        android:textColor="?android:attr/textColorPrimary"
         android:textSize="20sp"
         android:textStyle="bold" />
 
@@ -28,7 +98,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:text="Speed: 1.0x"
-        android:textColor="#CCFFFFFF" />
+        android:textColor="?android:attr/textColorSecondary" />
 
     <SeekBar
         android:id="@+id/seek_speed"
@@ -37,8 +107,8 @@
         android:layout_marginTop="8dp"
         android:max="150"
         android:progress="50"
-        android:progressTint="@color/primary"
-        android:thumbTint="@color/primary" />
+        android:progressTint="?attr/accentColor"
+        android:thumbTint="?attr/accentColor" />
 
     <TextView
         android:id="@+id/tv_pitch_label"
@@ -46,7 +116,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:text="Pitch: 1.0"
-        android:textColor="#CCFFFFFF" />
+        android:textColor="?android:attr/textColorSecondary" />
 
     <SeekBar
         android:id="@+id/seek_pitch"
@@ -55,8 +125,8 @@
         android:layout_marginTop="8dp"
         android:max="100"
         android:progress="50"
-        android:progressTint="@color/primary"
-        android:thumbTint="@color/primary" />
+        android:progressTint="?attr/accentColor"
+        android:thumbTint="?attr/accentColor" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -71,9 +141,9 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Preview"
-            android:textColor="@color/primary"
+            android:textColor="?attr/accentColor"
             app:icon="@android:drawable/ic_btn_speak_now"
-            app:iconTint="@color/primary" />
+            app:iconTint="?attr/accentColor" />
 
         <Button
             android:id="@+id/btn_reset"

@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@color/background_dark"
+    android:background="?android:attr/windowBackground"
     android:orientation="vertical"
     android:padding="24dp">
 
@@ -11,7 +11,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/exporting_title"
-        android:textColor="@color/white"
+        android:textColor="?android:attr/textColorPrimary"
         android:textSize="20sp"
         android:textStyle="bold" />
 
@@ -21,7 +21,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:text="@string/export_progress_initial"
-        android:textColor="#CCFFFFFF"
+        android:textColor="?android:attr/textColorSecondary"
         android:textSize="14sp" />
 
     <ProgressBar
@@ -32,8 +32,7 @@
         android:layout_marginTop="20dp"
         android:max="100"
         android:progress="0"
-        android:progressTint="@color/primary"
-        android:thumbTint="@color/primary" />
+        android:progressTint="?attr/accentColor" />
 
     <TextView
         android:id="@+id/tv_export_percent"
@@ -42,7 +41,7 @@
         android:layout_gravity="end"
         android:layout_marginTop="8dp"
         android:text="0%"
-        android:textColor="@color/white"
+        android:textColor="?android:attr/textColorPrimary"
         android:textStyle="bold" />
 
     <ImageView
@@ -68,7 +67,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/close"
-            android:textColor="#CCFFFFFF"
+            android:textColor="?android:attr/textColorSecondary"
             android:visibility="gone" />
 
         <Button
@@ -78,7 +77,8 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
             android:text="@string/share_audio"
-            android:visibility="gone" />
+            android:visibility="gone"
+            android:backgroundTint="?attr/accentColor" />
     </LinearLayout>
 
 </LinearLayout>
