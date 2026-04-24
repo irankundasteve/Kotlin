@@ -15,6 +15,7 @@
     <string name="export_failed">Export failed. Please try again.</string>
     <string name="tts_not_ready">Text to speech is not ready yet.</string>
     <string name="export_requires_text">Enter text before exporting.</string>
+    <string name="export_storage_permission_required">Storage permission is required to save audio on this Android version.</string>
     <string name="export_saved_to">%1$s saved successfully.</string>
     <string name="export_format_menu_title">Choose export format</string>
     <string name="reading_file">Reading file...</string>

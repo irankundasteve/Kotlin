@@ -1,12 +1,15 @@
 package com.example.helloworld
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +24,7 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
@@ -75,6 +79,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private var speechPitch = 1.0f
     private var lastExportUri: Uri? = null
     private var lastExportMimeType: String? = null
+    private var pendingExportFormat: AudioExportFormat? = null
 
     private var currentSettings = AppSettings()
     private val accentColors = listOf(
@@ -105,6 +110,16 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             result.data?.data?.let { uri ->
                 importFile(uri)
             }
+        }
+    }
+
+    private val storagePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val format = pendingExportFormat
+        pendingExportFormat = null
+        if (granted && format != null) {
+            beginExportInternal(format)
+        } else if (!granted) {
+            Toast.makeText(this, R.string.export_storage_permission_required, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -324,22 +339,30 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun beginExport(format: AudioExportFormat) {
-        if (isExporting) return
-
         val text = etInput.text.toString().trim()
+        if (isExporting) return
         if (text.isEmpty()) {
             Toast.makeText(this, R.string.export_requires_text, Toast.LENGTH_SHORT).show()
             return
         }
+        if (!canWriteToPublicStorage()) {
+            pendingExportFormat = format
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
+        beginExportInternal(format)
+    }
 
+    private fun beginExportInternal(format: AudioExportFormat) {
         stopPlayback()
         isExporting = true
         lastExportUri = null
         lastExportMimeType = null
+        val text = etInput.text.toString().trim()
         updateButtonsState(text.isNotEmpty())
         showExportDialog()
         updateExportProgress(0, getString(R.string.export_progress_initial))
-        animateExportProgress(18)
+        animateExportProgress(15, 140L)
 
         lifecycleScope.launch(Dispatchers.IO) {
             val exportDir = getExternalFilesDir(null) ?: cacheDir
@@ -348,8 +371,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
             try {
                 updateExportProgress(12, getString(R.string.export_progress_synthesizing))
+                animateExportProgress(calculateSynthesisProgressCap(text.length), 180L)
                 
-                // Ensure we wait for synthesis on a background thread
                 awaitSynthesisToFile(text, tempWav, "EXPORT_${System.currentTimeMillis()}")
                 
                 if (!tempWav.exists() || tempWav.length() == 0L) {
@@ -359,8 +382,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 updateExportProgress(70, getString(R.string.export_progress_encoding))
 
                 val finalSource = if (format == AudioExportFormat.MP3) {
-                    animateExportProgress(88)
-                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "Encoding to MP3...", Toast.LENGTH_SHORT).show() }
+                    animateExportProgress(88, 90L)
                     AudioExportManager.convertWavToMp3(tempWav, tempMp3)
                     tempMp3
                 } else {
@@ -368,7 +390,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 }
 
                 updateExportProgress(92, getString(R.string.export_progress_saving))
-                withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, "Saving to storage...", Toast.LENGTH_SHORT).show() }
+                animateExportProgress(98, 110L)
                 val exportResult = AudioExportManager.saveToPublicStorage(this@MainActivity, finalSource, format)
                 
                 withContext(Dispatchers.Main) {
@@ -411,7 +433,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 throw IllegalStateException("TTS Engine failed to start synthesis for $utteranceId")
             }
 
-            // Wait for completion with a 30-second timeout to prevent permanent hangs
             kotlinx.coroutines.withTimeout(30000) {
                 deferred.await()
             }
@@ -453,7 +474,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun animateExportProgress(target: Int) {
+    private fun animateExportProgress(target: Int, delayMillis: Long) {
         stopExportProgressAnimation()
         val safeTarget = target.coerceIn(0, 95)
         exportProgressRunnable = object : Runnable {
@@ -461,7 +482,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 val current = exportProgressBar?.progress ?: 0
                 if (current < safeTarget) {
                     updateExportProgress(current + 1, exportStatusText?.text?.toString() ?: "")
-                    exportProgressHandler.postDelayed(this, 90)
+                    exportProgressHandler.postDelayed(this, delayMillis)
                 }
             }
         }
@@ -484,6 +505,20 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             exportCloseButton?.visibility = View.VISIBLE
             Toast.makeText(this, getString(R.string.export_saved_to, fileName), Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun calculateSynthesisProgressCap(textLength: Int): Int {
+        return when {
+            textLength >= 4000 -> 76
+            textLength >= 2500 -> 70
+            textLength >= 1200 -> 64
+            else -> 58
+        }
+    }
+
+    private fun canWriteToPublicStorage(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun dismissExportDialog() {
@@ -509,6 +544,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = mimeType
             putExtra(Intent.EXTRA_STREAM, shareUri)
+            clipData = android.content.ClipData.newUri(contentResolver, "Exported audio", shareUri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         startActivity(Intent.createChooser(intent, getString(R.string.share_audio_sheet_title)))
@@ -829,9 +865,6 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(id: String?) {
-                    if (id?.startsWith("EXPORT_") == true) {
-                        runOnUiThread { Toast.makeText(this@MainActivity, "Synthesis started...", Toast.LENGTH_SHORT).show() }
-                    }
                 }
                 override fun onDone(id: String?) {
                     val deferred = id?.let { pendingFileSyntheses.remove(it) }
