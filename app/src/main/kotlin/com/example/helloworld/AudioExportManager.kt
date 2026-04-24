@@ -66,29 +66,25 @@ object AudioExportManager {
         val resolver = context.contentResolver
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val collection = if (format == AudioExportFormat.MP3) {
-                MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            } else {
-                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            }
+            val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 
             val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, format.mimeType)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, format.relativeDirectory)
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
+                put(MediaStore.Audio.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Audio.Media.MIME_TYPE, format.mimeType)
+                put(MediaStore.Audio.Media.RELATIVE_PATH, format.relativeDirectory)
+                put(MediaStore.Audio.Media.IS_PENDING, 1)
             }
 
             val uri = resolver.insert(collection, values)
-                ?: throw IllegalStateException("Failed to create MediaStore entry for $fileName")
+                ?: throw IllegalStateException("Failed to create MediaStore entry. Error code: 101")
 
             try {
                 resolver.openOutputStream(uri)?.use { output ->
                     sourceFile.inputStream().use { input -> input.copyTo(output) }
-                } ?: throw IllegalStateException("Failed to open output stream for $uri")
+                } ?: throw IllegalStateException("Failed to open output stream for storage. Error code: 102")
 
                 val pendingValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    put(MediaStore.Audio.Media.IS_PENDING, 0)
                 }
                 resolver.update(uri, pendingValues, null, null)
             } catch (e: Exception) {
