@@ -85,7 +85,7 @@ object AudioExportManager {
     ) = withContext(Dispatchers.Main) {
         val initDeferred = CompletableDeferred<Unit>()
         val completionDeferred = CompletableDeferred<Unit>()
-        lateinit var exportTts: TextToSpeech
+        var exportTts: TextToSpeech? = null
         val utteranceId = "EXPORT_${System.currentTimeMillis()}"
 
         try {
@@ -100,7 +100,8 @@ object AudioExportManager {
             }
 
             withTimeout(15000) { initDeferred.await() }
-            exportTts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            val readyTts = exportTts ?: throw IllegalStateException("TTS instance was not created for audio export.")
+            readyTts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = Unit
 
                 override fun onDone(utteranceId: String?) {
@@ -121,11 +122,11 @@ object AudioExportManager {
                 }
             })
 
-            exportTts.language = locale
-            exportTts.setSpeechRate(speechRate)
-            exportTts.setPitch(speechPitch)
+            readyTts.language = locale
+            readyTts.setSpeechRate(speechRate)
+            readyTts.setPitch(speechPitch)
 
-            val result = exportTts.synthesizeToFile(text, Bundle(), outputFile, utteranceId)
+            val result = readyTts.synthesizeToFile(text, Bundle(), outputFile, utteranceId)
             if (result == TextToSpeech.ERROR) {
                 throw IllegalStateException("The speech engine could not start audio export.")
             }
@@ -136,10 +137,8 @@ object AudioExportManager {
                 "The speech engine did not generate an audio file."
             }
         } finally {
-            if (::exportTts.isInitialized) {
-                exportTts.stop()
-                exportTts.shutdown()
-            }
+            exportTts?.stop()
+            exportTts?.shutdown()
         }
     }
 
