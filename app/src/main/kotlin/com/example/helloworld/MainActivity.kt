@@ -454,25 +454,32 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         pendingFileSyntheses[utteranceId] = deferred
 
         try {
-            val result = withContext(Dispatchers.Main) {
-                tts?.synthesizeToFile(text, Bundle(), outputFile, utteranceId) ?: TextToSpeech.ERROR
+            val synthesisResult = withContext(Dispatchers.Main) {
+                val engine = tts
+                if (engine == null || !isTtsReady) {
+                    throw IllegalStateException("TTS Engine is not ready for synthesis.")
+                }
+                engine.stop()
+                engine.synthesizeToFile(text, Bundle(), outputFile, utteranceId)
             }
 
-            if (result == TextToSpeech.ERROR) {
+            if (synthesisResult == TextToSpeech.ERROR) {
                 pendingFileSyntheses.remove(utteranceId)
-                throw IllegalStateException("The speech engine could not start audio export.")
+                throw IllegalStateException("The speech engine failed to start the synthesis task.")
             }
 
-            kotlinx.coroutines.withTimeout(30000) {
+            val timeout = (text.length * 20L).coerceAtLeast(30000L).coerceAtMost(120000L)
+            
+            kotlinx.coroutines.withTimeout(timeout) {
                 deferred.await()
             }
 
             if (!outputFile.exists() || outputFile.length() == 0L) {
-                throw IllegalStateException("The speech engine did not generate an audio file.")
+                throw IllegalStateException("The speech engine finished but the output file is missing or empty.")
             }
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             pendingFileSyntheses.remove(utteranceId)
-            throw IllegalStateException("TTS synthesis timed out after 30 seconds.")
+            throw IllegalStateException("Synthesis timed out. The text might be too long for the current voice engine.")
         } catch (e: Exception) {
             pendingFileSyntheses.remove(utteranceId)
             throw e
@@ -490,13 +497,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         exportCloseButton = view.findViewById(R.id.btn_export_close)
 
         val accentTint = android.content.res.ColorStateList.valueOf(currentSettings.accentColor)
+        
+        // Use direct property access and safer tinting
         exportProgressBar?.progressTintList = accentTint
         exportShareButton?.backgroundTintList = accentTint
+        
         exportSuccessIcon?.let { icon ->
-            ImageViewCompat.setImageTintList(
-                icon,
-                android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this, R.color.success_green))
-            )
+            val successColor = ContextCompat.getColor(this, R.color.success_green)
+            icon.imageTintList = android.content.res.ColorStateList.valueOf(successColor)
         }
 
         exportShareButton?.setOnClickListener { shareLastExport() }
@@ -580,15 +588,10 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun shareLastExport() {
         val exportUri = lastExportUri ?: return
         val mimeType = lastExportMimeType ?: "audio/*"
-        val shareUri = if (exportUri.scheme == "file") {
-            FileProvider.getUriForFile(this, "$packageName.fileprovider", File(exportUri.path.orEmpty()))
-        } else {
-            exportUri
-        }
+        
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = mimeType
-            putExtra(Intent.EXTRA_STREAM, shareUri)
-            clipData = android.content.ClipData.newUri(contentResolver, "Exported audio", shareUri)
+            putExtra(Intent.EXTRA_STREAM, exportUri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         startActivity(Intent.createChooser(intent, getString(R.string.share_audio_sheet_title)))
