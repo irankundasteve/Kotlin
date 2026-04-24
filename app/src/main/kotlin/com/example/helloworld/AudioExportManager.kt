@@ -66,6 +66,12 @@ object AudioExportManager {
         val resolver = context.contentResolver
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val collection = if (format == AudioExportFormat.MP3) {
+                MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            } else {
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            }
+
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, format.mimeType)
@@ -73,18 +79,22 @@ object AudioExportManager {
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
 
-            val collection = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
             val uri = resolver.insert(collection, values)
-                ?: error("Unable to create destination file.")
+                ?: throw IllegalStateException("Failed to create MediaStore entry for $fileName")
 
-            resolver.openOutputStream(uri)?.use { output ->
-                sourceFile.inputStream().use { input -> input.copyTo(output) }
-            } ?: error("Unable to open destination output stream.")
+            try {
+                resolver.openOutputStream(uri)?.use { output ->
+                    sourceFile.inputStream().use { input -> input.copyTo(output) }
+                } ?: throw IllegalStateException("Failed to open output stream for $uri")
 
-            val pendingValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.IS_PENDING, 0)
+                val pendingValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                }
+                resolver.update(uri, pendingValues, null, null)
+            } catch (e: Exception) {
+                resolver.delete(uri, null, null)
+                throw e
             }
-            resolver.update(uri, pendingValues, null, null)
             AudioExportResult(uri, fileName)
         } else {
             val rootDirectory = Environment.getExternalStoragePublicDirectory(

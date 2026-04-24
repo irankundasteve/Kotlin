@@ -338,13 +338,20 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         updateExportProgress(0, getString(R.string.export_progress_initial))
         animateExportProgress(18)
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             val tempWav = File(cacheDir, "tts_export_${System.currentTimeMillis()}.wav")
             val tempMp3 = File(cacheDir, "tts_export_${System.currentTimeMillis()}.mp3")
 
             try {
                 updateExportProgress(12, getString(R.string.export_progress_synthesizing))
+                
+                // Ensure we wait for synthesis on a background thread
                 awaitSynthesisToFile(text, tempWav, "EXPORT_${System.currentTimeMillis()}")
+                
+                if (!tempWav.exists() || tempWav.length() == 0L) {
+                    throw IllegalStateException("TTS synthesis failed to produce a file.")
+                }
+
                 updateExportProgress(70, getString(R.string.export_progress_encoding))
 
                 val finalSource = if (format == AudioExportFormat.MP3) {
@@ -357,22 +364,29 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
                 updateExportProgress(92, getString(R.string.export_progress_saving))
                 val exportResult = AudioExportManager.saveToPublicStorage(this@MainActivity, finalSource, format)
-                lastExportUri = exportResult.uri
-                lastExportMimeType = format.mimeType
-                showExportSuccess(exportResult.displayName)
+                
+                withContext(Dispatchers.Main) {
+                    lastExportUri = exportResult.uri
+                    lastExportMimeType = format.mimeType
+                    showExportSuccess(exportResult.displayName)
+                }
             } catch (error: Exception) {
-                dismissExportDialog()
-                Toast.makeText(
-                    this@MainActivity,
-                    error.message ?: getString(R.string.export_failed),
-                    Toast.LENGTH_LONG
-                ).show()
+                withContext(Dispatchers.Main) {
+                    dismissExportDialog()
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Export Error: ${error.localizedMessage ?: "Unknown error"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             } finally {
                 stopExportProgressAnimation()
-                tempWav.delete()
-                tempMp3.delete()
-                isExporting = false
-                updateButtonsState(etInput.text?.isNotEmpty() == true)
+                if (tempWav.exists()) tempWav.delete()
+                if (tempMp3.exists()) tempMp3.delete()
+                withContext(Dispatchers.Main) {
+                    isExporting = false
+                    updateButtonsState(etInput.text?.isNotEmpty() == true)
+                }
             }
         }
     }
@@ -380,16 +394,28 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private suspend fun awaitSynthesisToFile(text: String, outputFile: File, utteranceId: String) {
         val deferred = CompletableDeferred<Unit>()
         pendingFileSyntheses[utteranceId] = deferred
-        val result = withContext(Dispatchers.Main) {
-            tts?.synthesizeToFile(text, Bundle(), outputFile, utteranceId) ?: TextToSpeech.ERROR
-        }
+        
+        try {
+            val result = withContext(Dispatchers.Main) {
+                tts?.synthesizeToFile(text, Bundle(), outputFile, utteranceId) ?: TextToSpeech.ERROR
+            }
 
-        if (result == TextToSpeech.ERROR) {
+            if (result == TextToSpeech.ERROR) {
+                pendingFileSyntheses.remove(utteranceId)
+                throw IllegalStateException("TTS Engine failed to start synthesis for $utteranceId")
+            }
+
+            // Wait for completion with a 30-second timeout to prevent permanent hangs
+            kotlinx.coroutines.withTimeout(30000) {
+                deferred.await()
+            }
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
             pendingFileSyntheses.remove(utteranceId)
-            throw IllegalStateException(getString(R.string.export_failed))
+            throw IllegalStateException("TTS synthesis timed out after 30 seconds.")
+        } catch (e: Exception) {
+            pendingFileSyntheses.remove(utteranceId)
+            throw e
         }
-
-        deferred.await()
     }
 
     private fun showExportDialog() {
